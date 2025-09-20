@@ -9,9 +9,17 @@ rows = cursor.fetchall()
 
 # Define column names (same as in your table)
 columns = [
-    "id", "published", "last_modified", "description",
-    "cvss_v3_score", "cvss_v3_vector",
-    "cvss_v2_score", "cvss_v2_vector", "reference_urls"
+    "id",
+    "published",
+    "last_modified",
+    "description",
+    "cvss_v3_score",
+
+    "cvss_v3_severity",
+    "cvss_v2_score",
+
+    "cvss_v2_severity",
+    "reference_urls"
 ]
 
 # Convert each row tuple into a dictionary
@@ -21,3 +29,6 @@ cve_dicts = [dict(zip(columns, row)) for row in rows]
 for cve in cve_dicts:
     print(cve)
     print("-----------------------")
+
+cursor.execute("DROP TABLE IF EXISTS cve")
+

@@ -3,51 +3,321 @@
 <head>
     <title>Stored CVEs</title>
     <style>
-        table, th, td { border: 1px solid black; border-collapse: collapse; padding: 8px; }
-        th { background-color: #f2f2f2; }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            table-layout: fixed;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+        }
+        th.sortable {
+            position: relative;
+            padding-right: 20px;
+        }
+        th.sortable:hover {
+            background-color: #d0d0d0;
+        }
+        th.sortable::after {
+            content: "↕";
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #555;
+        }
+        th.sortable.sort-asc::after {
+            content: "▲";
+            color: #2e7d32;
+        }
+        th.sortable.sort-desc::after {
+            content: "▼";
+            color: #c62828;
+        }
+        /* Column widths (9 columns total 100%) */
+        th:nth-child(1), td:nth-child(1) { width: 10%; } /* ID */
+        th:nth-child(2), td:nth-child(2) { width: 10%; } /* Published */
+        th:nth-child(3), td:nth-child(3) { width: 10%; } /* Last Modified */
+        th:nth-child(4), td:nth-child(4) { width: 25%; } /* Description */
+        th:nth-child(5), td:nth-child(5) { width: 8%; } /* CVSS v3 Score */
+        th:nth-child(6), td:nth-child(6) { width: 8%; } /* CVSS v3 Severity */
+        th:nth-child(7), td:nth-child(7) { width: 8%; } /* CVSS v2 Score */
+        th:nth-child(8), td:nth-child(8) { width: 8%; } /* CVSS v2 Severity */
+        th:nth-child(9), td:nth-child(9) { width: 13%; } /* References */
+        td {
+            max-height: 100px;
+            overflow-y: auto;
+        }
+        /* References button */
+        button.references-btn {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        button.references-btn:hover {
+            background-color: #003366;
+        }
+        button.references-btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .modal-content ul {
+            list-style-type: circle;
+            padding-left: 20px;
+            margin: 0;
+        }
+        .modal-content a {
+            color: #0066cc;
+            text-decoration: none;
+            word-break: break-all;
+        }
+        .modal-content a:hover {
+            text-decoration: underline;
+        }
+        .modal-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 1.2em;
+            cursor: pointer;
+            color: #333;
+        }
+        #loading {
+            margin: 10px 0;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
     <h1>Stored CVEs</h1>
     <a href="/">← Back to Home</a>
-    <table>
+    <div id="loading" style="display: block;">Loading CVEs...</div>
+    <table id="cve-table">
+        <thead>
             <tr>
                 <th>ID</th>
                 <th>Published</th>
                 <th>Last Modified</th>
                 <th>Description</th>
-                <th>CVSS v3 Score</th>
-
+                <th class="sortable" data-column="cvss_v3_score">CVSS v3 Score</th>
                 <th>CVSS v3 Severity</th>
-                <th>CVSS v2 Score</th>
-
-                <th>CVSS v2 Severity</th>
+                <th class="sortable" data-column="cvss_v2_score">CVSS v2 Score</th>
+                <th> CVSS v2 Severity</th>
                 <th>References</th>
             </tr>
-            {% for cve in cves %}
-            <tr>
-                <td>{{ cve.id }}</td>
-                <td>{{ cve.published }}</td>
-                <td>{{ cve.last_modified }}</td>
-                <td>{{ cve.description }}</td>
-                <td>{{ cve.cvss_v3_score }}</td>
-
-                <td>{{ cve.cvss_v3_severity }}</td>
-                <td>{{ cve.cvss_v2_score }}</td>
-
-                <td>{{ cve.cvss_v2_severity }}</td>
-                <td>
-                    {% if cve.reference_urls %}
-                        {% set refs = cve.reference_urls.split(",") %}
-                        <ul style="list-style-type: circle; padding-left: 1em;">
-                        {% for url in refs %}
-                            <li><a href="{{ url }}" target="_blank">{{ url }}</a></li>
-                        {% endfor %}
-                        </ul>
-                    {% endif %}
-                </td>
-        </tr>
-        {% endfor %}
+        </thead>
+        <tbody id="cve-table-body">
+        </tbody>
     </table>
+
+    <!-- Modal for references -->
+    <div id="references-modal" class="modal">
+        <div class="modal-content">
+            <span id="modal-close" class="modal-close">&times;</span>
+            <h3>References</h3>
+            <ul id="references-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        const tableBody = document.getElementById("cve-table-body");
+        const loadingDiv = document.getElementById("loading");
+        const modal = document.getElementById("references-modal");
+        const referencesList = document.getElementById("references-list");
+        const modalClose = document.getElementById("modal-close");
+        let sortedRows = [];
+        let currentSort = { column: null, direction: 'asc' };
+
+        // Modal open/close logic
+        function openModal(urls) {
+            referencesList.innerHTML = '';
+            if (urls) {
+                const urlArray = urls.split(",");
+                urlArray.forEach(url => {
+                    if (url) {
+                        const li = document.createElement("li");
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.textContent = url;
+                        a.target = "_blank";
+                        li.appendChild(a);
+                        referencesList.appendChild(li);
+                    }
+                });
+            } else {
+                referencesList.innerHTML = '<li>No references available</li>';
+            }
+            modal.style.display = "flex";
+        }
+
+        modalClose.addEventListener('click', () => {
+            modal.style.display = "none";
+        });
+
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.style.display = "none";
+            }
+        });
+
+        // Add click handlers for sorting
+        document.querySelectorAll('th.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const column = th.getAttribute('data-column');
+                const direction = currentSort.column === column && currentSort.direction === 'asc' ? 'desc' : 'asc';
+
+                currentSort = { column, direction };
+
+                document.querySelectorAll('th.sortable').forEach(h => {
+                    h.classList.remove('sort-asc', 'sort-desc');
+                    if (h.getAttribute('data-column') === column) {
+                        h.classList.add(`sort-${direction}`);
+                    }
+                });
+
+                sortTable(column, direction);
+            });
+        });
+
+        // Sort function
+        function sortTable(column, direction) {
+            sortedRows.sort((a, b) => {
+                let valA = a[column];
+                let valB = b[column];
+
+                if (valA == null || valA === '') valA = direction === 'asc' ? Infinity : -Infinity;
+                if (valB == null || valB === '') valB = direction === 'asc' ? Infinity : -Infinity;
+
+                if (column.includes('score')) {
+                    valA = parseFloat(valA) || 0;
+                    valB = parseFloat(valB) || 0;
+                    return direction === 'asc' ? valA - valB : valB - valA;
+                }
+
+                if (column.includes('severity')) {
+                    return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                }
+
+                return 0;
+            });
+
+            tableBody.innerHTML = '';
+            sortedRows.forEach(rowData => createRow(rowData));
+        }
+
+        // Create a table row
+        function createRow(cve) {
+            const row = document.createElement("tr");
+            const fields = [
+                cve.id || "",
+                cve.published || "",
+                cve.last_modified || "",
+                cve.description || "",
+                cve.cvss_v3_score || "",
+                cve.cvss_v3_severity || "",
+                cve.cvss_v2_score || "",
+                cve.cvss_v2_severity || "",
+                cve.reference_urls || ""
+            ];
+
+            fields.forEach((field, index) => {
+                const cell = document.createElement("td");
+                if (index === 8) { // References column
+                    const btn = document.createElement("button");
+                    btn.className = "references-btn";
+                    btn.textContent = "References";
+                    btn.disabled = !field; // Disable if no URLs
+                    if (field) {
+                        btn.onclick = () => openModal(field);
+                    }
+                    cell.appendChild(btn);
+                } else {
+                    cell.textContent = field;
+                }
+                row.appendChild(cell);
+            });
+
+            tableBody.appendChild(row);
+            return row;
+        }
+
+        const source = new EventSource("/stream-cves");
+
+        source.onmessage = function(event) {
+            const cves = JSON.parse(event.data);
+            if (cves.error) {
+                console.error("Error:", cves.error);
+                loadingDiv.textContent = "Error: " + cves.error;
+                source.close();
+                return;
+            }
+
+            cves.forEach(cve => {
+                sortedRows.push(cve);
+                createRow(cve);
+            });
+
+            if (currentSort.column) {
+                sortTable(currentSort.column, currentSort.direction);
+            }
+
+            loadingDiv.style.display = "none";
+        };
+
+        source.onerror = function() {
+            console.error("SSE connection error");
+            loadingDiv.textContent = "Error: Failed to connect to server";
+            source.close();
+        };
+    </script>
+    <script>
+      const loadingEl = document.getElementById("loading");
+      let dots = 1;
+
+      setInterval(() => {
+        dots = (dots % 3) + 1; // cycle through 1 → 2 → 3
+        loadingEl.textContent = "Loading CVEs" + ".".repeat(dots);
+      }, 500); // every 0.5 second
+    </script>
 </body>
 </html>

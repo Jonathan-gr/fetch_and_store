@@ -24,7 +24,7 @@ columns = [
 
 # Convert each row tuple into a dictionary
 cve_dicts = [dict(zip(columns, row)) for row in rows]
-
+print(len(cve_dicts))
 # Print nicely
 for cve in cve_dicts:
     print(cve)

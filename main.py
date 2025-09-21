@@ -1,17 +1,17 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
-import requests
 import httpx
-from database import create_tables, save_cve, get_connection,COLUMN_DICT
-
+import json
+from database import create_tables, save_cve, get_connection, COLUMN_DICT
+import asyncio
 
 app = FastAPI()
 
 API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CPE = "cpe:2.3:o:microsoft:windows_10:1607"
-# setup templates directory
 templates = Jinja2Templates(directory="templates")
+
 
 # Homepage with two buttons
 @app.get("/")
@@ -20,34 +20,43 @@ def home(request: Request):
     return templates.TemplateResponse("main.html", {"request": request})
 
 
-# Fetch and store data, then redirect to /view
-@app.get("/fetch-and-store")
-async def fetch_and_store_nist_data():
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName=cpe:2.3:o:microsoft:windows_10:1607"
-            )
-        response.raise_for_status()
-        data = response.json()
+# Stream CVE data using Server-Sent Events
+@app.get("/stream-cves")
+async def stream_cves():
+    async def event_stream():
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{API_URL}?cpeName={CPE}"
+                )
+                response.raise_for_status()
+                data = response.json()
 
-        for item in data.get("vulnerabilities", []):
-            save_cve(item)
+                cve_batch = []
+                batch_size = 20
 
-        return RedirectResponse(url="/display", status_code=303)
-    except Exception as e:
-        return {"error": str(e)}
+                for item in data.get("vulnerabilities", []):
+                    cve = save_cve(item)  # Assume save_cve returns the saved CVE as a dict
+                    if cve:
+                        cve_batch.append(cve)
 
-# View data as an HTML table
+                    if len(cve_batch) >= batch_size:
+                        # Send batch as SSE event
+                        yield f"data: {json.dumps(cve_batch)}\n\n"
+                        cve_batch = []  # Reset batch
+                        await asyncio.sleep(0.1)  # Small delay to prevent overwhelming the client
+
+                # Send any remaining CVEs
+                if cve_batch:
+                    yield f"data: {json.dumps(cve_batch)}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# View data as an HTML table with SSE support
 @app.get("/display")
 def view_cves(request: Request):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM cve")
-    cves = cursor.fetchall()
-    conn.close()
-
-    columns = COLUMN_DICT.keys()
-    cve_list = [dict(zip(columns, row)) for row in cves]
-
-    return templates.TemplateResponse("display.html", {"request": request, "cves": cve_list})
+    return templates.TemplateResponse("display.html", {"request": request})

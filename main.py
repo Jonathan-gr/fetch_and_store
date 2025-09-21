@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 import httpx
 import json
 from database import create_tables, save_cve, get_connection, COLUMN_DICT
@@ -11,7 +12,7 @@ app = FastAPI()
 API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CPE = "cpe:2.3:o:microsoft:windows_10:1607"
 templates = Jinja2Templates(directory="templates")
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Homepage with two buttons
 @app.get("/")
@@ -33,7 +34,7 @@ async def stream_cves():
                 data = response.json()
 
                 cve_batch = []
-                batch_size = 20
+                batch_size = 20  # Send data in chunks of 20 CVEs
 
                 for item in data.get("vulnerabilities", []):
                     cve = save_cve(item)  # Assume save_cve returns the saved CVE as a dict

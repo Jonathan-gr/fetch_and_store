@@ -108,3 +108,4 @@ def save_cve_batch(cve_items):
     conn.close()
 
     return cve_data_list  # Return the list of processed CVE data for streaming
+

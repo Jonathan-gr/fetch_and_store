@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+import pandas as pd
 
 DB_FILE = Path("cves.db")
 
@@ -69,7 +70,6 @@ def save_cve(item):
 
 def save_cve_batch(cve_items):
 
-
     if not cve_items:
         return []
 
@@ -112,3 +112,16 @@ def save_cve_batch(cve_items):
 
     return cve_data_list  # Return the list of processed CVE data for streaming
 
+def get_cve_table():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM cve")
+    cves = [dict(zip(COLUMN_DICT.keys(), row)) for row in cursor.fetchall()]
+    conn.close()
+    return cves
+
+def load_cve_dataframe():
+    cves  = get_cve_table()
+    df = pd.DataFrame(cves)
+
+    return df

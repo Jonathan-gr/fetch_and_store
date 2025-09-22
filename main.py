@@ -4,20 +4,24 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 import httpx
 import json
-from database import create_tables, save_cve, get_connection, COLUMN_DICT
+import database as DB
 import asyncio
+import matplotlib.pyplot as plt
+from fastapi.responses import FileResponse
+import graphs
 
 app = FastAPI()
 
 API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CPE = "cpe:2.3:o:microsoft:windows_10:1607"
+API_KEY = "2b6813de-0c34-41a6-8245-2106e1505233"
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Homepage with two buttons
 @app.get("/")
 def home(request: Request):
-    create_tables()
+    DB.create_tables()
     return templates.TemplateResponse("main.html", {"request": request})
 
 
@@ -26,18 +30,22 @@ def home(request: Request):
 async def stream_cves():
     async def event_stream():
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{API_URL}?cpeName={CPE}"
-                )
-                response.raise_for_status()
-                data = response.json()
+            headers = {"apiKey": API_KEY}
+            print("start")
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=2",headers=headers)
+
+                try:
+                    data = response.json()
+                except Exception as e:
+                    print("JSON parse error:", str(e))
+                    data = {}
 
                 cve_batch = []
                 batch_size = 20  # Send data in chunks of 20 CVEs
 
                 for item in data.get("vulnerabilities", []):
-                    cve = save_cve(item)  # Assume save_cve returns the saved CVE as a dict
+                    cve = DB.save_cve(item)  # Assume save_cve returns the saved CVE as a dict
                     if cve:
                         cve_batch.append(cve)
 
@@ -64,11 +72,7 @@ def view_cves(request: Request):
 
 @app.get("/display-stored")
 def display_stored_cves(request: Request):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM cve")
-    cves = [dict(zip(COLUMN_DICT.keys(), row)) for row in cursor.fetchall()]
-    conn.close()
+    cves = DB.get_cve_table()
     if not cves:
         return templates.TemplateResponse(
         "error.html",
@@ -78,3 +82,12 @@ def display_stored_cves(request: Request):
         "display_table.html",
         {"request": request, "cves": cves}
     )
+
+
+@app.get("/graphs")
+def cvss_v3_distribution():
+    df = DB.load_cve_dataframe()
+    return graphs.draw_cvss_v3_distribution(df)
+
+
+

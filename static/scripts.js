@@ -173,7 +173,7 @@ function sortTable(column, direction) {
 }
 
 // Initialize for /display-stored
-if (window.location.pathname.includes("/display-stored")) {
+if (window.location.pathname === "/display-stored") {
     initializeSortedRows();
     attachButtonListeners();
     if (sortedRows.length > 0) {
@@ -185,7 +185,7 @@ if (window.location.pathname.includes("/display-stored")) {
 }
 
 // Handle streaming CVEs for /display
-if (window.location.pathname.includes("/display")) {
+if (window.location.pathname === "/display") {
     const source = new EventSource("/stream-cves");
     source.onmessage = function(event) {
         const cves = JSON.parse(event.data);

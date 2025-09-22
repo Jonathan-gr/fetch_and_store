@@ -32,6 +32,7 @@ def create_tables():
     conn.close()
 
 def save_cve(item):
+
     values_dict = {}
 
     # Extract values from API
@@ -67,6 +68,8 @@ def save_cve(item):
     return values_dict  # Return the processed CVE data for streaming
 
 def save_cve_batch(cve_items):
+
+
     if not cve_items:
         return []
 

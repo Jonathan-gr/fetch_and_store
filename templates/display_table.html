@@ -7,7 +7,10 @@
 <body>
     <h1>Stored CVEs</h1>
     <a href="/">← Back to Home</a>
-    <div id="loading" style="display: block;">Loading CVEs...</div>
+
+    <!-- Loading indicator -->
+    <div id="loading" style="display:none;">Loading CVEs...</div>
+
     <table id="cve-table">
         <thead>
             <tr>
@@ -22,10 +25,34 @@
                 <th>References</th>
             </tr>
         </thead>
-        <tbody id="cve-table-body"></tbody>
+        <tbody id="cve-table-body">
+            {% for cve in cves %}
+            <tr>
+                <td>{{ cve.id }}</td>
+                <td>{{ cve.published }}</td>
+                <td>{{ cve.last_modified }}</td>
+                <td>
+                    <button class="description-btn"
+                        data-description="{{ cve.description }}">
+                        View Description
+                    </button>
+                </td>
+                <td>{{ cve.cvss_v3_score or "" }}</td>
+                <td>{{ cve.cvss_v3_severity or "" }}</td>
+                <td>{{ cve.cvss_v2_score or "" }}</td>
+                <td>{{ cve.cvss_v2_severity or "" }}</td>
+                <td>
+                <button class="references-btn"
+                        data-references='{{ cve.reference_urls }}'>
+                    References
+                </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
     </table>
 
-    <!-- Modal for references -->
+    <!-- Modals -->
     <div id="references-modal" class="modal">
         <div class="modal-content">
             <span id="modal-close" class="modal-close">&times;</span>
@@ -34,7 +61,6 @@
         </div>
     </div>
 
-    <!-- Modal for description -->
     <div id="description-modal" class="modal">
         <div class="modal-content">
             <span id="description-close" class="modal-close">&times;</span>

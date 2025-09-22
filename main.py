@@ -61,3 +61,20 @@ async def stream_cves():
 @app.get("/display")
 def view_cves(request: Request):
     return templates.TemplateResponse("display.html", {"request": request})
+
+@app.get("/display-stored")
+def display_stored_cves(request: Request):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM cve")
+    cves = [dict(zip(COLUMN_DICT.keys(), row)) for row in cursor.fetchall()]
+    conn.close()
+    if not cves:
+        return templates.TemplateResponse(
+        "error.html",
+        {"request": request, "message": "No CVEs found in the database. You must fetch them first"}
+    )
+    return templates.TemplateResponse(
+        "display_table.html",
+        {"request": request, "cves": cves}
+    )

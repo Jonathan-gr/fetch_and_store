@@ -16,11 +16,11 @@ function openReferencesModal(urls) {
     if (urls) {
         const urlArray = urls.split(",");
         urlArray.forEach(url => {
-            if (url) {
+            if (url.trim()) {
                 const li = document.createElement("li");
                 const a = document.createElement("a");
-                a.href = url;
-                a.textContent = url;
+                a.href = url.trim();
+                a.textContent = url.trim();
                 a.target = "_blank";
                 li.appendChild(a);
                 referencesList.appendChild(li);
@@ -47,6 +47,44 @@ referencesModal.addEventListener('click', (e) => {
 descriptionModal.addEventListener('click', (e) => {
     if (e.target === descriptionModal) descriptionModal.style.display = "none";
 });
+
+// Initialize sortedRows from server-rendered table
+function initializeSortedRows() {
+    sortedRows = [];
+    const rows = tableBody.querySelectorAll("tr");
+    rows.forEach(row => {
+        const cells = row.querySelectorAll("td");
+        const descriptionBtn = cells[3].querySelector(".description-btn");
+        const referencesBtn = cells[8].querySelector(".references-btn");
+        sortedRows.push({
+            id: cells[0].textContent,
+            published: cells[1].textContent,
+            last_modified: cells[2].textContent,
+            description: descriptionBtn ? descriptionBtn.getAttribute("data-description") : "",
+            cvss_v3_score: cells[4].textContent || null,
+            cvss_v3_severity: cells[5].textContent,
+            cvss_v2_score: cells[6].textContent || null,
+            cvss_v2_severity: cells[7].textContent,
+            references: referencesBtn ? referencesBtn.getAttribute("data-references") : ""
+        });
+    });
+}
+
+// Attach event listeners to server-rendered buttons
+function attachButtonListeners() {
+    const descriptionButtons = document.querySelectorAll(".description-btn");
+    const referencesButtons = document.querySelectorAll(".references-btn");
+
+    descriptionButtons.forEach(btn => {
+        btn.disabled = !btn.getAttribute("data-description");
+        btn.onclick = () => openDescriptionModal(btn.getAttribute("data-description"));
+    });
+
+    referencesButtons.forEach(btn => {
+        btn.disabled = !btn.getAttribute("data-references");
+        btn.onclick = () => openReferencesModal(btn.getAttribute("data-references"));
+    });
+}
 
 // Sorting
 document.querySelectorAll('th.sortable').forEach(th => {
@@ -87,78 +125,133 @@ function sortTable(column, direction) {
         return 0;
     });
 
+    // Re-render table with sorted rows
     tableBody.innerHTML = '';
-    sortedRows.forEach(rowData => createRow(rowData));
+    sortedRows.forEach(rowData => {
+        const row = document.createElement("tr");
+        const fields = [
+            rowData.id || "",
+            rowData.published || "",
+            rowData.last_modified || "",
+            rowData.description || "",
+            rowData.cvss_v3_score || "",
+            rowData.cvss_v3_severity || "",
+            rowData.cvss_v2_score || "",
+            rowData.cvss_v2_severity || "",
+            rowData.references || ""
+        ];
+
+        fields.forEach((field, index) => {
+            const cell = document.createElement("td");
+            if (index === 8) { // References
+                const btn = document.createElement("button");
+                btn.className = "references-btn";
+                btn.textContent = "References";
+                btn.disabled = !field;
+                btn.setAttribute("data-references", field);
+                btn.onclick = () => openReferencesModal(field);
+                cell.appendChild(btn);
+            } else if (index === 3) { // Description
+                const btn = document.createElement("button");
+                btn.className = "description-btn";
+                btn.textContent = "View Description";
+                btn.disabled = !field;
+                btn.setAttribute("data-description", field);
+                btn.onclick = () => openDescriptionModal(field);
+                cell.appendChild(btn);
+            } else {
+                cell.textContent = field;
+            }
+            row.appendChild(cell);
+        });
+
+        tableBody.appendChild(row);
+    });
+
+    // Re-attach button listeners after re-rendering
+    attachButtonListeners();
 }
 
-// Create table row
-function createRow(cve) {
-    const row = document.createElement("tr");
-    const fields = [
-        cve.id || "",
-        cve.published || "",
-        cve.last_modified || "",
-        cve.description || "", // Used for button logic, not displayed directly
-        cve.cvss_v3_score || "",
-        cve.cvss_v3_severity || "",
-        cve.cvss_v2_score || "",
-        cve.cvss_v2_severity || "",
-        cve.reference_urls || ""
-    ];
+// Initialize for /display-stored
+if (window.location.pathname.includes("/display-stored")) {
+    initializeSortedRows();
+    attachButtonListeners();
+    if (sortedRows.length > 0) {
+        loadingDiv.style.display = "none";
+    } else {
+        loadingDiv.style.display = "block";
+        loadingDiv.textContent = "No CVEs found in database.";
+    }
+}
 
-    fields.forEach((field, index) => {
-        const cell = document.createElement("td");
-        if (index === 8) { // References
-            const btn = document.createElement("button");
-            btn.className = "references-btn";
-            btn.textContent = "References";
-            btn.disabled = !field;
-            if (field) btn.onclick = () => openReferencesModal(field);
-            cell.appendChild(btn);
-        } else if (index === 3) { // Description
-            const btn = document.createElement("button");
-            btn.className = "description-btn";
-            btn.textContent = "View Description";
-            btn.disabled = !field;
-            if (field) btn.onclick = () => openDescriptionModal(field);
-            cell.appendChild(btn);
-        } else {
-            cell.textContent = field;
+// Handle streaming CVEs for /display
+if (window.location.pathname.includes("/display")) {
+    const source = new EventSource("/stream-cves");
+    source.onmessage = function(event) {
+        const cves = JSON.parse(event.data);
+        if (cves.error) {
+            console.error("Error:", cves.error);
+            loadingDiv.textContent = "Error: " + cves.error;
+            source.close();
+            return;
         }
-        row.appendChild(cell);
-    });
 
-    tableBody.appendChild(row);
-    return row;
+        cves.forEach(cve => {
+            sortedRows.push(cve);
+            const row = document.createElement("tr");
+            const fields = [
+                cve.id || "",
+                cve.published || "",
+                cve.last_modified || "",
+                cve.description || "",
+                cve.cvss_v3_score || "",
+                cve.cvss_v3_severity || "",
+                cve.cvss_v2_score || "",
+                cve.cvss_v2_severity || "",
+                cve.references || cve.reference_urls || ""
+            ];
+
+            fields.forEach((field, index) => {
+                const cell = document.createElement("td");
+                if (index === 8) { // References
+                    const btn = document.createElement("button");
+                    btn.className = "references-btn";
+                    btn.textContent = "References";
+                    btn.disabled = !field;
+                    btn.setAttribute("data-references", field);
+                    btn.onclick = () => openReferencesModal(field);
+                    cell.appendChild(btn);
+                } else if (index === 3) { // Description
+                    const btn = document.createElement("button");
+                    btn.className = "description-btn";
+                    btn.textContent = "View Description";
+                    btn.disabled = !field;
+                    btn.setAttribute("data-description", field);
+                    btn.onclick = () => openDescriptionModal(field);
+                    cell.appendChild(btn);
+                } else {
+                    cell.textContent = field;
+                }
+                row.appendChild(cell);
+            });
+
+            tableBody.appendChild(row);
+        });
+
+        if (currentSort.column) {
+            sortTable(currentSort.column, currentSort.direction);
+        }
+
+        loadingDiv.style.display = "none";
+    };
+
+    source.onerror = function() {
+        console.error("SSE connection error");
+        loadingDiv.textContent = "Error: Failed to connect to server";
+        source.close();
+    };
 }
 
-const source = new EventSource("/stream-cves");
-source.onmessage = function(event) {
-    const cves = JSON.parse(event.data);
-    if (cves.error) {
-        console.error("Error:", cves.error);
-        loadingDiv.textContent = "Error: " + cves.error;
-        source.close();
-        return;
-    }
-
-    cves.forEach(cve => {
-        sortedRows.push(cve);
-        createRow(cve);
-    });
-
-    if (currentSort.column) {
-        sortTable(currentSort.column, currentSort.direction);
-    }
-
-    loadingDiv.style.display = "none";
-};
-
-source.onerror = function() {
-    console.error("SSE connection error");
-    loadingDiv.textContent = "Error: Failed to connect to server";
-    source.close();
-};
 
 // Loading dots animation
 const loadingEl = document.getElementById("loading");
@@ -166,4 +259,4 @@ let dots = 1;
 setInterval(() => {
     dots = (dots % 3) + 1;
     loadingEl.textContent = "Loading CVEs" + ".".repeat(dots);
-}, 500);
+}, 400);

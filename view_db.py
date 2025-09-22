@@ -4,7 +4,7 @@ conn = sqlite3.connect("cves.db")
 cursor = conn.cursor()
 
 # Fetch data
-cursor.execute("SELECT * FROM cve LIMIT 5")
+cursor.execute("SELECT * FROM cve")
 rows = cursor.fetchall()
 
 # Define column names (same as in your table)
@@ -26,9 +26,9 @@ columns = [
 cve_dicts = [dict(zip(columns, row)) for row in rows]
 print(len(cve_dicts))
 # Print nicely
-for cve in cve_dicts:
-    print(cve)
-    print("-----------------------")
+# for cve in cve_dicts:
+#     print(cve)
+#     print("-----------------------")
 
 cursor.execute("DROP TABLE IF EXISTS cve")
 

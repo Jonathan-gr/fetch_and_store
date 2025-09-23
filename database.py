@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 import pandas as pd
@@ -24,6 +25,9 @@ def create_tables():
     cursor = conn.cursor()
 
     column_defs = ",\n    ".join(f"{col} {col_type}" for col, col_type in COLUMN_DICT.items())
+
+
+
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS cve (
             {column_defs}
@@ -123,5 +127,36 @@ def get_cve_table():
 def load_cve_dataframe():
     cves  = get_cve_table()
     df = pd.DataFrame(cves)
-
     return df
+
+def delete_all_from_table():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM cve")
+    conn.close()
+
+
+def make_df_ready_for_display():
+    try:
+        df = load_cve_dataframe()
+        if df.empty:
+            print("No CVE data found in database.")
+            return json.dumps([])  # Return empty array instead of None
+
+        # Convert dates to string format
+        df['published'] = pd.to_datetime(df['published'], errors='coerce').dt.strftime('%Y-%m-%d')
+        df['last_modified'] = pd.to_datetime(df['last_modified'], errors='coerce').dt.strftime('%Y-%m-%d')
+        # Replace NaN/None with null for JSON compatibility
+        df = df.where(pd.notnull(df), None)
+        data_json = df.to_json(orient="records", lines=False)
+        return data_json
+    except Exception as e:
+        print((f"Error preparing DataFrame: {e}"))
+        return json.dumps([])  # Fallback to empty array on error
+
+    # Convert DataFrame to JSON for Plotly
+    df['published'] = pd.to_datetime(df['published']).dt.strftime('%Y-%m-%d')
+    df['last_modified'] = pd.to_datetime(df['last_modified']).dt.strftime('%Y-%m-%d')
+    data_json = df.to_json(orient="records", lines=False)
+
+    return data_json

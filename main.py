@@ -30,10 +30,11 @@ def home(request: Request):
 async def stream_cves():
     async def event_stream():
         try:
+            DB.delete_all_from_table()
             headers = {"apiKey": API_KEY}
             print("start")
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=2",headers=headers)
+                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=20",headers=headers)
 
                 try:
                     data = response.json()
@@ -85,9 +86,19 @@ def display_stored_cves(request: Request):
 
 
 @app.get("/graphs")
-def cvss_v3_distribution():
-    df = DB.load_cve_dataframe()
-    return graphs.draw_cvss_v3_distribution(df)
+async def display_graphs(request: Request):
+
+    json_res = DB.make_df_ready_for_display()
+
+    if not json_res:
+        return templates.TemplateResponse(
+            "error.html",
+            {"request": request, "message": "No CVEs found in the database. You must fetch them first"}
+        )
+    return templates.TemplateResponse(
+        "graphs.html",
+        {"request": request, "cve_data_json": json_res}
+    )
 
 
 

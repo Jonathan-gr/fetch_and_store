@@ -1,2 +1,220 @@
-<h2>CVSS v3 Score Distribution</h2>
-<img src="/graphs/cvss_v3_distribution" alt="CVSS v3 distribution">
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CVE Graphs</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f9;
+        }
+        h1, h2 {
+            color: #333;
+            text-align: center;
+        }
+        .graph-container {
+            margin: 20px auto;
+            max-width: 800px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .no-data {
+            text-align: center;
+            color: #d62728;
+            font-size: 18px;
+            margin: 20px;
+        }
+        a {
+            display: inline-block;
+            margin: 10px 5px;
+            color: #0066cc;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        select {
+            margin: 10px;
+            padding: 5px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>CVE Data Visualizations</h1>
+    <a href="/">← Back to Home</a>
+
+
+    <h2>CVSS v3 Score Distribution</h2>
+    <div id="cvss-v3-histogram" class="graph-container"></div>
+
+    <h2>CVSS v2 and v3 Severity Counts</h2>
+    <div id="severity-bar" class="graph-container"></div>
+
+    <h2>CVSS v3 vs. v2 Scores</h2>
+    <div id="score-scatter" class="graph-container"></div>
+
+    <h2>CVEs by Published Year</h2>
+    <div id="time-series" class="graph-container"></div>
+
+    <script>
+        // Parse CVE data from template
+        let cveData;
+        try {
+            cveData = {{ cve_data_json | safe }};
+            console.log("Parsed CVE data:", cveData); // Debug
+        } catch (e) {
+            console.error("Error parsing CVE data:", e);
+            cveData = [];
+        }
+
+        function updateGraphs() {
+            const filteredData = cveData;  // Always use all CVEs
+
+            if (!filteredData || filteredData.length === 0) {
+                document.querySelectorAll('.graph-container').forEach(div => {
+                    div.innerHTML = '<p class="no-data">No CVE data available. Please <a href="/stream-cves">fetch CVEs</a> first.</p>';
+                });
+                return;
+            }
+
+        // Define bins (0–10 with step 1)
+        const bins = Array.from({ length: 11 }, (_, i) => i);
+
+        // Helper: bin counts
+        function binScores(scores) {
+            const counts = Array(bins.length).fill(0);
+            scores.forEach(score => {
+                const idx = Math.floor(score);
+                if (idx >= 0 && idx <= 10) counts[idx]++;
+            });
+            return counts;
+        }
+
+        // Extract & bin scores
+        const cvssV3Scores = filteredData
+            .map(d => d.cvss_v3_score)
+            .filter(score => score !== null && score !== "");
+        const cvssV2Scores = filteredData
+            .map(d => d.cvss_v2_score)
+            .filter(score => score !== null && score !== "");
+
+        const v3Counts = binScores(cvssV3Scores);
+        const v2Counts = binScores(cvssV2Scores);
+
+        // Create grouped bar chart
+        Plotly.newPlot('cvss-v3-histogram', [
+            {
+                type: 'scatter',
+                x: bins,
+                y: v3Counts,
+                name: 'CVSS v3',
+                marker: { color: 'blue' },
+
+            },
+            {
+                type: 'scatter',
+                x: bins,
+                y: v2Counts,
+                name: 'CVSS v2',
+                marker: { color: 'red' },
+            }
+        ], {
+            title: { text: 'Distribution of CVSS v2 vs CVSS v3 Scores', font: { size: 18 } },
+            xaxis: { title: 'CVSS Score (binned)', dtick: 1, range: [0, 10.5] },
+            yaxis: { title: 'Count' },
+            margin: { t: 50, b: 50, l: 50, r: 50 },
+            plot_bgcolor: '#f8f9fa',
+            paper_bgcolor: '#f8f9fa',
+            responsive: true,
+        }, { displayModeBar: false });
+
+        // Define severities
+        const severities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+
+        // Count severities for v3
+        const severityCountsV3 = filteredData.reduce((acc, d) => {
+            const sev = d.cvss_v3_severity;
+            if (sev && severities.includes(sev)) {
+                acc[sev] = (acc[sev] || 0) + 1;
+            }
+            return acc;
+        }, {});
+
+        // Count severities for v2
+        const severityCountsV2 = filteredData.reduce((acc, d) => {
+            const sev = d.cvss_v2_severity;
+            if (sev && severities.includes(sev)) {
+                acc[sev] = (acc[sev] || 0) + 1;
+            }
+            return acc;
+        }, {});
+
+        // Prepare y values in the same severity order
+        const v3Data = severities.map(sev => severityCountsV3[sev] || 0);
+        const v2Data = severities.map(sev => severityCountsV2[sev] || 0);
+
+        // Plot grouped bar chart
+        Plotly.newPlot('severity-bar', [
+            {
+                type: 'bar',
+                x: severities,
+                y: v3Data,
+                name: 'CVSS v3',
+                marker: { color: '#1f77b4' },
+                hovertemplate: 'Severity: %{x}<br>CVSS v3 Count: %{y}<extra></extra>'
+            },
+            {
+                type: 'bar',
+                x: severities,
+                y: v2Data,
+                name: 'CVSS v2',
+                marker: { color: '#ff7f0e' },
+                hovertemplate: 'Severity: %{x}<br>CVSS v2 Count: %{y}<extra></extra>'
+            }
+        ], {
+
+            xaxis: { title: 'Severity' },
+            yaxis: { title: 'Count' },
+            margin: { t: 50, b: 50, l: 50, r: 50 },
+            plot_bgcolor: '#f8f9fa',
+            paper_bgcolor: '#f8f9fa',
+            barmode: 'group',
+            responsive: true
+        }, { displayModeBar: false });
+
+            // Time Series by Published Year
+            const yearCounts = filteredData.reduce((acc, d) => {
+                const year = d.published ? d.published.slice(0, 4) : 'Unknown';
+                acc[year] = (acc[year] || 0) + 1;
+                return acc;
+            }, {});
+            const years = Object.keys(yearCounts).sort();
+            Plotly.newPlot('time-series', [{
+                type: 'scatter',
+                mode: 'lines+markers',
+                x: years,
+                y: years.map(y => yearCounts[y]),
+                marker: { size: 12, color: '#d62728', line: { color: 'black', width: 0.5 } },
+                line: { color: '#d62728', width: 2 },
+                hovertemplate: 'Year: %{x}<br>Count: %{y}<extra></extra>'
+            }], {
+                title: { text: 'CVEs by Published Year', font: { size: 18 } },
+                xaxis: { title: 'Year', tickmode: 'linear' },
+                yaxis: { title: 'Number of CVEs' },
+                margin: { t: 50, b: 50, l: 50, r: 50 },
+                plot_bgcolor: '#f8f9fa',
+                paper_bgcolor: '#f8f9fa',
+                responsive: true
+            },{ displayModeBar: false });
+        }
+
+        // Initial render
+        updateGraphs();
+    </script>
+</body>
+</html>

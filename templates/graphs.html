@@ -3,6 +3,8 @@
 <head>
     <title>CVE Graphs</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.1.2/wordcloud2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stopword@1.0.7/lib/stopword.min.js"></script>
     <link rel="stylesheet" href="/static/styles.css">
     <style>
         body {
@@ -15,8 +17,8 @@
             text-align: center;
         }
         .graph-container {
-            margin: 20px auto;
-            max-width: 800px;
+            margin: 80px auto;
+            max-width: 1000px;
             border: 1px solid #ddd;
             padding: 10px;
             background-color: white;
@@ -42,24 +44,29 @@
             padding: 5px;
             font-size: 16px;
         }
+        #cvss-v3-histogram .modebar {
+        top: auto !important;
+        bottom: -120px !important;
+        left: 54% !important;
+        transform: translateX(-100%) !important;
+
+        }
+        #wordcloud {
+            height: 400px; /* same height as your other graphs */
+        }
     </style>
 </head>
 <body>
     <h1>CVE Data Visualizations</h1>
     <a href="/">← Back to Home</a>
 
-
-    <h2>CVSS v3 Score Distribution</h2>
     <div id="cvss-v3-histogram" class="graph-container"></div>
 
-    <h2>CVSS v2 and v3 Severity Counts</h2>
     <div id="severity-bar" class="graph-container"></div>
 
-    <h2>CVSS v3 vs. v2 Scores</h2>
     <div id="score-scatter" class="graph-container"></div>
-
-    <h2>CVEs by Published Year</h2>
-    <div id="time-series" class="graph-container"></div>
+    <h1 style="text-align:center">Top CVE Words</h1>
+    <div id="wordcloud" class="graph-container"></div>
 
     <script>
         // Parse CVE data from template
@@ -82,135 +89,254 @@
                 return;
             }
 
-        // Define bins (0–10 with step 1)
-        const bins = Array.from({ length: 11 }, (_, i) => i);
+            // Define bins (0–10 with step 0.1)
+            const step = 0.1;
+            const bins = Array.from({ length: Math.floor(10 / step) + 1 }, (_, i) => +(i * step).toFixed(1));
 
-        // Helper: bin counts
-        function binScores(scores) {
-            const counts = Array(bins.length).fill(0);
-            scores.forEach(score => {
-                const idx = Math.floor(score);
-                if (idx >= 0 && idx <= 10) counts[idx]++;
-            });
-            return counts;
-        }
-
-        // Extract & bin scores
-        const cvssV3Scores = filteredData
-            .map(d => d.cvss_v3_score)
-            .filter(score => score !== null && score !== "");
-        const cvssV2Scores = filteredData
-            .map(d => d.cvss_v2_score)
-            .filter(score => score !== null && score !== "");
-
-        const v3Counts = binScores(cvssV3Scores);
-        const v2Counts = binScores(cvssV2Scores);
-
-        // Create grouped bar chart
-        Plotly.newPlot('cvss-v3-histogram', [
-            {
-                type: 'scatter',
-                x: bins,
-                y: v3Counts,
-                name: 'CVSS v3',
-                marker: { color: 'blue' },
-
-            },
-            {
-                type: 'scatter',
-                x: bins,
-                y: v2Counts,
-                name: 'CVSS v2',
-                marker: { color: 'red' },
+            // Helper: bin counts
+            function binScores(scores, step = 0.1) {
+                const counts = Array(bins.length).fill(0);
+                scores.forEach(score => {
+                    if (score !== null && score !== "") {
+                        const idx = Math.round(score / step); // find bin index
+                        if (idx >= 0 && idx < counts.length) counts[idx]++;
+                    }
+                });
+                return counts;
             }
-        ], {
-            title: { text: 'Distribution of CVSS v2 vs CVSS v3 Scores', font: { size: 18 } },
-            xaxis: { title: 'CVSS Score (binned)', dtick: 1, range: [0, 10.5] },
-            yaxis: { title: 'Count' },
-            margin: { t: 50, b: 50, l: 50, r: 50 },
-            plot_bgcolor: '#f8f9fa',
-            paper_bgcolor: '#f8f9fa',
-            responsive: true,
-        }, { displayModeBar: false });
 
-        // Define severities
-        const severities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+             // Define severities
+            const severities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 
-        // Count severities for v3
-        const severityCountsV3 = filteredData.reduce((acc, d) => {
-            const sev = d.cvss_v3_severity;
-            if (sev && severities.includes(sev)) {
-                acc[sev] = (acc[sev] || 0) + 1;
-            }
-            return acc;
-        }, {});
-
-        // Count severities for v2
-        const severityCountsV2 = filteredData.reduce((acc, d) => {
-            const sev = d.cvss_v2_severity;
-            if (sev && severities.includes(sev)) {
-                acc[sev] = (acc[sev] || 0) + 1;
-            }
-            return acc;
-        }, {});
-
-        // Prepare y values in the same severity order
-        const v3Data = severities.map(sev => severityCountsV3[sev] || 0);
-        const v2Data = severities.map(sev => severityCountsV2[sev] || 0);
-
-        // Plot grouped bar chart
-        Plotly.newPlot('severity-bar', [
-            {
-                type: 'bar',
-                x: severities,
-                y: v3Data,
-                name: 'CVSS v3',
-                marker: { color: '#1f77b4' },
-                hovertemplate: 'Severity: %{x}<br>CVSS v3 Count: %{y}<extra></extra>'
-            },
-            {
-                type: 'bar',
-                x: severities,
-                y: v2Data,
-                name: 'CVSS v2',
-                marker: { color: '#ff7f0e' },
-                hovertemplate: 'Severity: %{x}<br>CVSS v2 Count: %{y}<extra></extra>'
-            }
-        ], {
-
-            xaxis: { title: 'Severity' },
-            yaxis: { title: 'Count' },
-            margin: { t: 50, b: 50, l: 50, r: 50 },
-            plot_bgcolor: '#f8f9fa',
-            paper_bgcolor: '#f8f9fa',
-            barmode: 'group',
-            responsive: true
-        }, { displayModeBar: false });
-
-            // Time Series by Published Year
-            const yearCounts = filteredData.reduce((acc, d) => {
-                const year = d.published ? d.published.slice(0, 4) : 'Unknown';
-                acc[year] = (acc[year] || 0) + 1;
+            // Count severities for v3
+            const severityCountsV3 = filteredData.reduce((acc, d) => {
+                const sev = d.cvss_v3_severity;
+                if (sev && severities.includes(sev)) {
+                    acc[sev] = (acc[sev] || 0) + 1;
+                }
                 return acc;
             }, {});
-            const years = Object.keys(yearCounts).sort();
-            Plotly.newPlot('time-series', [{
-                type: 'scatter',
-                mode: 'lines+markers',
-                x: years,
-                y: years.map(y => yearCounts[y]),
-                marker: { size: 12, color: '#d62728', line: { color: 'black', width: 0.5 } },
-                line: { color: '#d62728', width: 2 },
-                hovertemplate: 'Year: %{x}<br>Count: %{y}<extra></extra>'
-            }], {
-                title: { text: 'CVEs by Published Year', font: { size: 18 } },
-                xaxis: { title: 'Year', tickmode: 'linear' },
-                yaxis: { title: 'Number of CVEs' },
+
+            // Count severities for v2
+            const severityCountsV2 = filteredData.reduce((acc, d) => {
+                const sev = d.cvss_v2_severity;
+                if (sev && severities.includes(sev)) {
+                    acc[sev] = (acc[sev] || 0) + 1;
+                }
+                return acc;
+            }, {});
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Extract & bin scores
+            const cvssV3Scores = filteredData
+                .map(d => parseFloat(d.cvss_v3_score))
+                .filter(score => !isNaN(score));
+            const cvssV2Scores = filteredData
+                .map(d => parseFloat(d.cvss_v2_score))
+                .filter(score => !isNaN(score));
+
+            const v3Counts = binScores(cvssV3Scores, step);
+            const v2Counts = binScores(cvssV2Scores, step);
+
+            // Create grouped line chart
+            Plotly.newPlot('cvss-v3-histogram', [
+                {
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    x: bins,
+                    y: v3Counts,
+                    name: 'CVSS v3',
+                    line: { color: 'blue' },
+                    hovertemplate: 'Score: %{x}<br>Count (v3): %{y}<extra></extra>'
+                },
+                {
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    x: bins,
+                    y: v2Counts,
+                    name: 'CVSS v2',
+                    line: { color: 'red' },
+                    hovertemplate: 'Score: %{x}<br>Count (v2): %{y}<extra></extra>'
+                }
+            ], {
+                title: { text: 'Distribution of CVSS v2 vs CVSS v3 Scores', font: { size: 18 } },
+                xaxis: { title: 'CVSS Score (0.1 bins)', dtick: 0.5, range: [0, 10] },
+                yaxis: { title: 'Count' },
                 margin: { t: 50, b: 50, l: 50, r: 50 },
                 plot_bgcolor: '#f8f9fa',
                 paper_bgcolor: '#f8f9fa',
+                responsive: true,
+            },);
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+            // Prepare y values in the same severity order
+            const v3Data = severities.map(sev => severityCountsV3[sev] || 0);
+            const v2Data = severities.map(sev => severityCountsV2[sev] || 0);
+
+            // Plot grouped bar chart
+            Plotly.newPlot('severity-bar', [
+                {
+                    type: 'bar',
+                    x: severities,
+                    y: v3Data,
+                    name: 'CVSS v3',
+                    marker: { color: '#1f77b4' },
+                    hovertemplate: 'Severity: %{x}<br>CVSS v3 Count: %{y}<extra></extra>',
+                    text: v3Data,                // show counts
+                    textposition: 'outside'      // position above bar
+                },
+                {
+                    type: 'bar',
+                    x: severities,
+                    y: v2Data,
+                    name: 'CVSS v2',
+                    marker: { color: '#ff7f0e' },
+                    hovertemplate: 'Severity: %{x}<br>CVSS v2 Count: %{y}<extra></extra>',
+                    text: v2Data,                // show counts
+                    textposition: 'outside'
+                }
+            ], {
+                title: { text: 'CVSS v2 and v3 Severity Counts', font: { size: 18 } },
+                xaxis: { title: 'Severity' },
+                yaxis: { title: 'Count' },
+                margin: { t: 50, b: 50, l: 50, r: 50 },
+                plot_bgcolor: '#f8f9fa',
+                paper_bgcolor: '#f8f9fa',
+                barmode: 'group',
                 responsive: true
-            },{ displayModeBar: false });
+            }, { displayModeBar: false });
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            // CVSS v3 vs. v2 Scores (Scatter)
+            const scatterData = filteredData.filter(d => d.cvss_v3_score && d.cvss_v2_score);
+
+            // Extract X and Y arrays
+            const xVals = scatterData.map(d => parseFloat(d.cvss_v3_score));
+            const yVals = scatterData.map(d => parseFloat(d.cvss_v2_score));
+
+            // --- Compute linear regression (y = m*x + b) ---
+            function linearRegression(x, y) {
+                const n = x.length;
+                const sumX = x.reduce((a, b) => a + b, 0);
+                const sumY = y.reduce((a, b) => a + b, 0);
+                const sumXY = x.reduce((a, b, i) => a + b * y[i], 0);
+                const sumX2 = x.reduce((a, b) => a + b * b, 0);
+
+                const m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+                const b = (sumY - m * sumX) / n;
+                return { m, b };
+            }
+
+            const { m, b } = linearRegression(xVals, yVals);
+
+            // Compute regression line points
+            const xMin = Math.min(...xVals);
+            const xMax = Math.max(...xVals);
+            const regressionX = [xMin, xMax];
+            const regressionY = regressionX.map(x => m * x + b);
+
+            // Build color array (based on avg score)
+            const avgScores = scatterData.map(d => (parseFloat(d.cvss_v3_score) + parseFloat(d.cvss_v2_score)) / 2);
+            function getColor(avg) {
+                if (avg < 2) return 'teal';
+                if (avg < 3) return 'lightblue';
+                if (avg < 4) return 'blue';
+                if (avg < 5) return 'green';
+                if (avg < 7) return 'orange';
+                if (avg < 8) return 'yellow';
+                if (avg < 9) return 'red';
+                return 'darkred';
+            }
+            const colors = avgScores.map(getColor);
+
+            // Plot scatter + regression line
+            Plotly.newPlot('score-scatter', [
+                {
+                    type: 'scatter',
+                    mode: 'markers',
+                    x: xVals,
+                    y: yVals,
+                    text: scatterData.map((d, i) => `CVE: ${d.id}<br>Avg: ${avgScores[i].toFixed(2)}`),
+                    textposition: 'top center',
+                    marker: {
+                        size: 10,
+                        color: colors,
+                        opacity: 1,
+                        line: { color: 'black', width: 0.5 }
+                    },
+                    hovertemplate: '%{text}<br> v3: %{x}<br> v2: %{y}<extra></extra>',
+                    name: 'CVEs'
+                },
+                {
+                    type: 'scatter',
+                    mode: 'lines',
+                    x: regressionX,
+                    y: regressionY,
+                    line: { color: 'black', width: 2, dash: 'dash' },
+                    name: `Regression (y=${m.toFixed(2)}x+${b.toFixed(2)})`
+                }
+            ], {
+                title: { text: 'CVSS v3 vs. v2 Scores ', font: { size: 18 } },
+                xaxis: { title: 'CVSS v3 Score', range: [0, 10.5], dtick: 1, gridcolor: '#ddd' },
+                yaxis: { title: 'CVSS v2 Score', range: [0, 10.5], dtick: 1, gridcolor: '#ddd' },
+                margin: { t: 50, b: 70, l: 50, r: 50 },
+                plot_bgcolor: '#f8f9fa',
+                paper_bgcolor: '#f8f9fa',
+                responsive: true,
+                 hovermode: 'closest'
+            }, { displayModeBar: false });
+
+
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Combine all descriptions into one string
+            const allText = filteredData.map(d => d.description || '').join(' ');
+
+            // Split into words, filter out small/irrelevant words
+            const stopWords = ['the','and','or','of','in','to','with','a','for','on','by','from','this','when','could','gold'];
+            const words = allText
+                .toLowerCase()
+                .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g,"")  // remove punctuation
+                .split(/\s+/)
+                .filter(w =>
+                    w.length > 2 &&
+                    !stopWords.includes(w) &&
+                    !/^\d+$/.test(w) // remove words that are only digits
+                );
+
+            // Count word frequencies
+            const wordFreq = {};
+            words.forEach(w => wordFreq[w] = (wordFreq[w] || 0) + 1);
+
+            // Convert to array, sort by frequency, take top 2510
+            const wordArray = Object.entries(wordFreq)  // [ [word, freq], ... ]
+                .sort((a, b) => b[1] - a[1])          // sort descending by frequency
+                .slice(0, 25);                         // take top 10
+
+            const container = document.getElementById('wordcloud');
+            WordCloud(container, {
+                list: wordArray,
+                gridSize: Math.round(16 * container.offsetWidth / 1024),
+                weightFactor: function (size) {
+                    // Scale words gently
+                    return Math.log(size + 1) * 10; // logarithmic scale
+                },
+
+                fontFamily: 'Times, serif',
+                color: 'random-dark',
+                rotateRatio: 0.5,
+                backgroundColor: '#f8f9fa',
+                minSize: 10
+            });
+
         }
 
         // Initial render

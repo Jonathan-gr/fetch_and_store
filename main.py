@@ -34,7 +34,7 @@ async def stream_cves():
             headers = {"apiKey": API_KEY}
             print("start")
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=20",headers=headers)
+                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=1",headers=headers)
 
                 try:
                     data = response.json()
@@ -46,6 +46,7 @@ async def stream_cves():
                 batch_size = 20  # Send data in chunks of 20 CVEs
 
                 for item in data.get("vulnerabilities", []):
+
                     cve = DB.save_cve(item)  # Assume save_cve returns the saved CVE as a dict
                     if cve:
                         cve_batch.append(cve)
@@ -74,6 +75,7 @@ def view_cves(request: Request):
 @app.get("/display-stored")
 def display_stored_cves(request: Request):
     cves = DB.get_cve_table()
+
     if not cves:
         return templates.TemplateResponse(
         "error.html",

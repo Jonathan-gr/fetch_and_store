@@ -2,6 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 import pandas as pd
+from datetime import datetime
 
 DB_FILE = Path("cves.db")
 
@@ -42,8 +43,8 @@ def save_cve(item):
 
     # Extract values from API
     values_dict['id'] = item["cve"]["id"]
-    values_dict['published'] = item["cve"]["published"]
-    values_dict['last_modified'] = item["cve"]["lastModified"]
+    values_dict['published'] = clean_datetime(item["cve"]["published"])
+    values_dict['last_modified'] = clean_datetime(item["cve"]["lastModified"])
     values_dict['description'] = item["cve"]["descriptions"][0]["value"]
 
     # CVSS v3
@@ -71,6 +72,9 @@ def save_cve(item):
     conn.close()
 
     return values_dict  # Return the processed CVE data for streaming
+def clean_datetime(dt_str):
+    # Parse full string, ignoring milliseconds if they exist
+    return datetime.fromisoformat(dt_str.split(".")[0]).strftime("%Y-%m-%d %H:%M:%S")
 
 def save_cve_batch(cve_items):
 
@@ -133,6 +137,7 @@ def delete_all_from_table():
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM cve")
+    conn.commit()
     conn.close()
 
 
@@ -141,7 +146,7 @@ def make_df_ready_for_display():
         df = load_cve_dataframe()
         if df.empty:
             print("No CVE data found in database.")
-            return json.dumps([])  # Return empty array instead of None
+            return json.dumps([])
 
         # Convert dates to string format
         df['published'] = pd.to_datetime(df['published'], errors='coerce').dt.strftime('%Y-%m-%d')
@@ -152,7 +157,7 @@ def make_df_ready_for_display():
         return data_json
     except Exception as e:
         print((f"Error preparing DataFrame: {e}"))
-        return json.dumps([])  # Fallback to empty array on error
+        return json.dumps([])
 
     # Convert DataFrame to JSON for Plotly
     df['published'] = pd.to_datetime(df['published']).dt.strftime('%Y-%m-%d')

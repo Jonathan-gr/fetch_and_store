@@ -4,8 +4,9 @@ conn = sqlite3.connect("cves.db")
 cursor = conn.cursor()
 
 # Fetch data
-cursor.execute("SELECT * FROM cve")
-rows = cursor.fetchall()
+cursor.execute("SELECT COUNT(*) FROM cve WHERE cvss_v2_score = 7.8")
+count = cursor.fetchone()[0]   # fetchone since it's a single value
+print("Count of CVSS v2 score = 7.8:", count)
 
 # Define column names (same as in your table)
 columns = [
@@ -23,12 +24,13 @@ columns = [
 ]
 
 # Convert each row tuple into a dictionary
-cve_dicts = [dict(zip(columns, row)) for row in rows]
-print(len(cve_dicts))
+# cve_dicts = [dict(zip(columns, row)) for row in rows]
+# print(len(cve_dicts))
 # Print nicely
 # for cve in cve_dicts:
 #     print(cve)
 #     print("-----------------------")
 
-cursor.execute("DROP TABLE IF EXISTS cve")
+
+#cursor.execute("DROP TABLE IF EXISTS cve")
 

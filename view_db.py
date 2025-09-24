@@ -32,5 +32,5 @@ columns = [
 #     print("-----------------------")
 
 
-#cursor.execute("DROP TABLE IF EXISTS cve")
+cursor.execute("DROP TABLE IF EXISTS cve")
 

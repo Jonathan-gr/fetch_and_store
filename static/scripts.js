@@ -286,14 +286,6 @@ function handleSSEError(source) {
 }
 
 // ---------- BUTTON HELPERS ----------
-function addReferencesButton(cell, references) {
-    const btn = document.createElement("button");
-    btn.className = "references-btn";
-    btn.textContent = "References";
-    btn.disabled = !references;
-    btn.setAttribute("data-references", references);
-
-}
 
 function addDescriptionButton(cell, description) {
     const btn = document.createElement("button");

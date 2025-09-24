@@ -24,11 +24,7 @@ def get_connection():
 def create_tables():
     conn = get_connection()
     cursor = conn.cursor()
-
     column_defs = ",\n    ".join(f"{col} {col_type}" for col, col_type in COLUMN_DICT.items())
-
-
-
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS cve (
             {column_defs}

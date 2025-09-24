@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -6,23 +8,28 @@ import httpx
 import json
 import database as DB
 import asyncio
-import matplotlib.pyplot as plt
-from fastapi.responses import FileResponse
-import graphs
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup code ---
+    DB.create_tables()
+    print("Database tables ensured.")
+    yield
 
+app = FastAPI(lifespan=lifespan)
 API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CPE = "cpe:2.3:o:microsoft:windows_10:1607"
-API_KEY = "2b6813de-0c34-41a6-8245-2106e1505233"
+
+API_KEY = os.getenv("NVD_API_KEY")
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Homepage with two buttons
 @app.get("/")
 def home(request: Request):
-    DB.create_tables()
     return templates.TemplateResponse("main.html", {"request": request})
+
+
 
 
 # Stream CVE data using Server-Sent Events
@@ -33,7 +40,7 @@ async def stream_cves():
             DB.delete_all_from_table()
             headers = {"apiKey": API_KEY}
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=1",headers=headers)
+                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=2",headers=headers)
 
                 try:
                     data = response.json()
@@ -89,8 +96,6 @@ def display_stored_cves(request: Request):
 @app.get("/graphs")
 async def display_graphs(request: Request):
     cve_data = DB.make_df_ready_for_display()
-    print("TYPE:", type(cve_data))
-    print("SAMPLE:", cve_data[:200] if isinstance(cve_data, str) else cve_data[:2])
 
     if not cve_data:
         return templates.TemplateResponse(

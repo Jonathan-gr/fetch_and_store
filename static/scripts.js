@@ -104,73 +104,101 @@ document.querySelectorAll('th.sortable').forEach(th => {
     });
 });
 
+// ---------- MAIN SORT FUNCTION ----------
 function sortTable(column, direction) {
-    sortedRows.sort((a, b) => {
+    const sortedRows = sortCVERows(sortedRows, column, direction);
+    renderCVETable(sortedRows);
+    attachButtonListeners(); // if needed for other functionality
+}
+
+// ---------- SORTING LOGIC ----------
+function sortCVERows(rows, column, direction) {
+    return [...rows].sort((a, b) => {
         let valA = a[column];
         let valB = b[column];
 
+        // Handle null or empty values
         if (valA == null || valA === '') valA = direction === 'asc' ? Infinity : -Infinity;
         if (valB == null || valB === '') valB = direction === 'asc' ? Infinity : -Infinity;
 
+        // Numeric sort for scores
         if (column.includes('score')) {
             valA = parseFloat(valA) || 0;
             valB = parseFloat(valB) || 0;
             return direction === 'asc' ? valA - valB : valB - valA;
         }
 
+        // Alphabetical sort for severity
         if (column.includes('severity')) {
             return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
         }
 
         return 0;
     });
+}
 
-    // Re-render table with sorted rows
+// ---------- TABLE RENDERING ----------
+function renderCVETable(rows) {
     tableBody.innerHTML = '';
-    sortedRows.forEach(rowData => {
-        const row = document.createElement("tr");
-        const fields = [
-            rowData.id || "",
-            rowData.published || "",
-            rowData.last_modified || "",
-            rowData.description || "",
-            rowData.cvss_v3_score || "",
-            rowData.cvss_v3_severity || "",
-            rowData.cvss_v2_score || "",
-            rowData.cvss_v2_severity || "",
-            rowData.references || ""
-        ];
-
-        fields.forEach((field, index) => {
-            const cell = document.createElement("td");
-            if (index === 8) { // References
-                const btn = document.createElement("button");
-                btn.className = "references-btn";
-                btn.textContent = "References";
-                btn.disabled = !field;
-                btn.setAttribute("data-references", field);
-                btn.onclick = () => openReferencesModal(field);
-                cell.appendChild(btn);
-            } else if (index === 3) { // Description
-                const btn = document.createElement("button");
-                btn.className = "description-btn";
-                btn.textContent = "View Description";
-                btn.disabled = !field;
-                btn.setAttribute("data-description", field);
-                btn.onclick = () => openDescriptionModal(field);
-                cell.appendChild(btn);
-            } else {
-                cell.textContent = field;
-            }
-            row.appendChild(cell);
-        });
-
+    rows.forEach(rowData => {
+        const row = createCVETableRow(rowData);
         tableBody.appendChild(row);
     });
-
-    // Re-attach button listeners after re-rendering
-    attachButtonListeners();
 }
+
+// ---------- CREATE ROW ----------
+function createCVETableRow(rowData) {
+    const row = document.createElement("tr");
+    const fields = [
+        rowData.id || "",
+        rowData.published || "",
+        rowData.last_modified || "",
+        rowData.description || "",
+        rowData.cvss_v3_score || "",
+        rowData.cvss_v3_severity || "",
+        rowData.cvss_v2_score || "",
+        rowData.cvss_v2_severity || "",
+        rowData.references || ""
+    ];
+
+    fields.forEach((field, index) => {
+        const cell = document.createElement("td");
+
+        if (index === 8) { // References
+            addReferencesButton(cell, field);
+        } else if (index === 3) { // Description
+            addDescriptionButton(cell, field);
+        } else {
+            cell.textContent = field;
+        }
+
+        row.appendChild(cell);
+    });
+
+    return row;
+}
+
+// ---------- BUTTON HELPERS ----------
+function addReferencesButton(cell, references) {
+    const btn = document.createElement("button");
+    btn.className = "references-btn";
+    btn.textContent = "References";
+    btn.disabled = !references;
+    btn.setAttribute("data-references", references);
+    btn.onclick = () => openReferencesModal(references);
+    cell.appendChild(btn);
+}
+
+function addDescriptionButton(cell, description) {
+    const btn = document.createElement("button");
+    btn.className = "description-btn";
+    btn.textContent = "View Description";
+    btn.disabled = !description;
+    btn.setAttribute("data-description", description);
+    btn.onclick = () => openDescriptionModal(description);
+    cell.appendChild(btn);
+}
+
 
 // Initialize for /display-stored
 if (window.location.pathname === "/display-stored") {
@@ -184,74 +212,98 @@ if (window.location.pathname === "/display-stored") {
     }
 }
 
-// Handle streaming CVEs for /display
+// ---------- MAIN SSE HANDLER ----------
 if (window.location.pathname === "/display") {
     const source = new EventSource("/stream-cves");
-    source.onmessage = function(event) {
-        const cves = JSON.parse(event.data);
-        if (cves.error) {
-            console.error("Error:", cves.error);
-            loadingDiv.textContent = "Error: " + cves.error;
-            source.close();
-            return;
-        }
 
-        cves.forEach(cve => {
-            sortedRows.push(cve);
-            const row = document.createElement("tr");
-            const fields = [
-                cve.id || "",
-                cve.published || "",
-                cve.last_modified || "",
-                cve.description || "",
-                cve.cvss_v3_score || "",
-                cve.cvss_v3_severity || "",
-                cve.cvss_v2_score || "",
-                cve.cvss_v2_severity || "",
-                cve.references || cve.reference_urls || ""
-            ];
-
-            fields.forEach((field, index) => {
-                const cell = document.createElement("td");
-                if (index === 8) { // References
-                    const btn = document.createElement("button");
-                    btn.className = "references-btn";
-                    btn.textContent = "References";
-                    btn.disabled = !field;
-                    btn.setAttribute("data-references", field);
-                    btn.onclick = () => openReferencesModal(field);
-                    cell.appendChild(btn);
-                } else if (index === 3) { // Description
-                    const btn = document.createElement("button");
-                    btn.className = "description-btn";
-                    btn.textContent = "View Description";
-                    btn.disabled = !field;
-                    btn.setAttribute("data-description", field);
-                    btn.onclick = () => openDescriptionModal(field);
-                    cell.appendChild(btn);
-                } else {
-                    cell.textContent = field;
-                }
-                row.appendChild(cell);
-            });
-
-            tableBody.appendChild(row);
-        });
-
-        if (currentSort.column) {
-            sortTable(currentSort.column, currentSort.direction);
-        }
-
-        loadingDiv.style.display = "none";
-    };
-
-    source.onerror = function() {
-        console.error("SSE connection error");
-        loadingDiv.textContent = "Error: Failed to connect to server";
-        source.close();
-    };
+    source.onmessage = event => handleCVEStream(event, source);
+    source.onerror = () => handleSSEError(source);
 }
 
+// ---------- HANDLE SSE MESSAGES ----------
+function handleCVEStream(event, source) {
+    const cves = JSON.parse(event.data);
+
+    if (cves.error) {
+        handleCVSError(cves.error, source);
+        return;
+    }
+
+    cves.forEach(cve => {
+        addCVERow(cve);
+        sortedRows.push(cve);
+    });
+
+    // Re-apply sorting if necessary
+    if (currentSort.column) {
+        sortTable(currentSort.column, currentSort.direction);
+    }
+
+    loadingDiv.style.display = "none";
+}
+
+// ---------- ADD SINGLE CVE ROW ----------
+function addCVERow(cve) {
+    const row = document.createElement("tr");
+    const fields = [
+        cve.id || "",
+        cve.published || "",
+        cve.last_modified || "",
+        cve.description || "",
+        cve.cvss_v3_score || "",
+        cve.cvss_v3_severity || "",
+        cve.cvss_v2_score || "",
+        cve.cvss_v2_severity || "",
+        cve.references || cve.reference_urls || ""
+    ];
+
+    fields.forEach((field, index) => {
+        const cell = document.createElement("td");
+        if (index === 8) {
+            addReferencesButton(cell, field);
+        } else if (index === 3) {
+            addDescriptionButton(cell, field);
+        } else {
+            cell.textContent = field;
+        }
+        row.appendChild(cell);
+    });
+
+    tableBody.appendChild(row);
+}
+
+// ---------- HANDLE ERRORS ----------
+function handleCVSError(errorMessage, source) {
+    console.error("Error:", errorMessage);
+    loadingDiv.textContent = "Error: " + errorMessage;
+    source.close();
+}
+
+function handleSSEError(source) {
+    console.error("SSE connection error");
+    loadingDiv.textContent = "Error: Failed to connect to server";
+    source.close();
+}
+
+// ---------- BUTTON HELPERS ----------
+function addReferencesButton(cell, references) {
+    const btn = document.createElement("button");
+    btn.className = "references-btn";
+    btn.textContent = "References";
+    btn.disabled = !references;
+    btn.setAttribute("data-references", references);
+
+}
+
+function addDescriptionButton(cell, description) {
+    const btn = document.createElement("button");
+    btn.className = "description-btn";
+    btn.textContent = "View Description";
+    btn.disabled = !description;
+    btn.setAttribute("data-description", description);
+    btn.onclick = () => openDescriptionModal(description);
+    cell.appendChild(btn);
+}
 
 // Loading dots animation
 const loadingEl = document.getElementById("loading");

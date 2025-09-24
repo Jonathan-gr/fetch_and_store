@@ -146,22 +146,17 @@ def make_df_ready_for_display():
         df = load_cve_dataframe()
         if df.empty:
             print("No CVE data found in database.")
-            return json.dumps([])
+            return []
 
-        # Convert dates to string format
+        # Convert dates
         df['published'] = pd.to_datetime(df['published'], errors='coerce').dt.strftime('%Y-%m-%d')
         df['last_modified'] = pd.to_datetime(df['last_modified'], errors='coerce').dt.strftime('%Y-%m-%d')
-        # Replace NaN/None with null for JSON compatibility
+
+        # Replace NaN with None
         df = df.where(pd.notnull(df), None)
-        data_json = df.to_json(orient="records", lines=False)
-        return data_json
+
+        # Convert DataFrame to list of dicts (NOT JSON string)
+        return df.to_dict(orient="records")
     except Exception as e:
-        print((f"Error preparing DataFrame: {e}"))
-        return json.dumps([])
-
-    # Convert DataFrame to JSON for Plotly
-    df['published'] = pd.to_datetime(df['published']).dt.strftime('%Y-%m-%d')
-    df['last_modified'] = pd.to_datetime(df['last_modified']).dt.strftime('%Y-%m-%d')
-    data_json = df.to_json(orient="records", lines=False)
-
-    return data_json
+        print(f"Error preparing DataFrame: {e}")
+        return []

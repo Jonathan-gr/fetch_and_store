@@ -32,7 +32,6 @@ async def stream_cves():
         try:
             DB.delete_all_from_table()
             headers = {"apiKey": API_KEY}
-            print("start")
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=1",headers=headers)
 
@@ -89,18 +88,25 @@ def display_stored_cves(request: Request):
 
 @app.get("/graphs")
 async def display_graphs(request: Request):
+    cve_data = DB.make_df_ready_for_display()
+    print("TYPE:", type(cve_data))
+    print("SAMPLE:", cve_data[:200] if isinstance(cve_data, str) else cve_data[:2])
 
-    json_res = DB.make_df_ready_for_display()
-
-    if not json_res:
+    if not cve_data:
         return templates.TemplateResponse(
             "error.html",
             {"request": request, "message": "No CVEs found in the database. You must fetch them first"}
         )
+
     return templates.TemplateResponse(
         "graphs.html",
-        {"request": request, "cve_data_json": json_res}
+        {"request": request, "cve_data": cve_data}
     )
 
+@app.get("/error")
 
-
+def display_error(request: Request):
+    return templates.TemplateResponse(
+        "error.html",
+        {"request": request, "message": "No CVEs found in the database. You must fetch them first"}
+    )

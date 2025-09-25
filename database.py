@@ -1,8 +1,8 @@
-import json
 import sqlite3
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
+from urllib.parse import urlparse
 
 DB_FILE = Path("cves.db")
 
@@ -17,6 +17,22 @@ COLUMN_DICT = {
     "cvss_v2_severity": "TEXT",
     "reference_urls": "TEXT",
 }
+
+#check if url is malicious
+def is_safe_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        if not parsed.netloc:
+            return False
+        # Block local/loopback/internal hosts
+        forbidden_hosts = ("localhost", "127.", "0.0.0.0", "[::1]")
+        if parsed.hostname and parsed.hostname.startswith(forbidden_hosts):
+            return False
+        return True
+    except Exception:
+        return False
 
 def get_connection():
     return sqlite3.connect(str(DB_FILE))  # Convert Path to str for sqlite
@@ -55,7 +71,8 @@ def save_cve(item):
 
     # References
     refs = item["cve"]["references"]
-    values_dict['reference_urls'] = ",".join(ref["url"] for ref in refs)
+    safe_refs = [ref["url"] for ref in refs if is_safe_url(ref["url"])]
+    values_dict['reference_urls'] = ",".join(safe_refs)
 
     # Save to database
     conn = get_connection()
@@ -68,6 +85,7 @@ def save_cve(item):
     conn.close()
 
     return values_dict  # Return the processed CVE data for streaming
+
 def clean_datetime(dt_str):
     # Parse full string, ignoring milliseconds if they exist
     return datetime.fromisoformat(dt_str.split(".")[0]).strftime("%Y-%m-%d %H:%M:%S")
@@ -96,7 +114,9 @@ def save_cve_batch(cve_items):
             # CVSS v2
             'cvss_v2_score': None,
             'cvss_v2_severity': None,
-            'reference_urls': ",".join(ref["url"] for ref in item["cve"]["references"])
+            'reference_urls': ",".join(
+                ref["url"] for ref in item["cve"]["references"] if is_safe_url(ref["url"])
+            )
         }
         cvss_v3 = item["cve"]["metrics"].get("cvssMetricV31") or item["cve"]["metrics"].get("cvssMetricV30")
         if cvss_v3:

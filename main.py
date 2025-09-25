@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import os
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -16,11 +17,19 @@ async def lifespan(app: FastAPI):
     print("Database tables ensured.")
     yield
 
+load_dotenv()
 app = FastAPI(lifespan=lifespan)
 API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 CPE = "cpe:2.3:o:microsoft:windows_10:1607"
 
 API_KEY = os.getenv("NVD_API_KEY")
+headers = {}
+if API_KEY:
+    print("APIKEY received")
+    headers["apiKey"] = API_KEY
+else:
+    print("No APIKEY given, might time out due to rate limiting.")
+
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -30,17 +39,14 @@ def home(request: Request):
     return templates.TemplateResponse("main.html", {"request": request})
 
 
-
-
 # Stream CVE data using Server-Sent Events
 @app.get("/stream-cves")
 async def stream_cves():
     async def event_stream():
         try:
             DB.delete_all_from_table()
-            headers = {"apiKey": API_KEY}
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=2",headers=headers)
+                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=150",headers=headers)
 
                 try:
                     data = response.json()
@@ -61,11 +67,15 @@ async def stream_cves():
                         # Send batch as SSE event
                         yield f"data: {json.dumps(cve_batch)}\n\n"
                         cve_batch = []  # Reset batch
-                        await asyncio.sleep(0.1)  # Small delay to prevent overwhelming the client
+                        await asyncio.sleep(0.1)  # Small delay to prevent overwhelming the
+
 
                 # Send any remaining CVEs
                 if cve_batch:
                     yield f"data: {json.dumps(cve_batch)}\n\n"
+
+            # --- SIGNAL STREAM COMPLETE ---
+            yield f"event: done\ndata: {{}}\n\n"
 
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -94,7 +104,7 @@ def display_stored_cves(request: Request):
 
 
 @app.get("/graphs")
-async def display_graphs(request: Request):
+def display_graphs(request: Request):
     cve_data = DB.make_df_ready_for_display()
 
     if not cve_data:

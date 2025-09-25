@@ -106,9 +106,9 @@ document.querySelectorAll('th.sortable').forEach(th => {
 
 // ---------- MAIN SORT FUNCTION ----------
 function sortTable(column, direction) {
-    const sortedRows = sortCVERows(sortedRows, column, direction);
+    sortedRows = sortCVERows(sortedRows, column, direction); // <-- update outer array
     renderCVETable(sortedRows);
-    attachButtonListeners(); // if needed for other functionality
+    attachButtonListeners();
 }
 
 // ---------- SORTING LOGIC ----------
@@ -215,10 +215,30 @@ if (window.location.pathname === "/display-stored") {
 // ---------- MAIN SSE HANDLER ----------
 if (window.location.pathname === "/display") {
     const source = new EventSource("/stream-cves");
-
-    source.onmessage = event => handleCVEStream(event, source);
+    source.onmessage = event => {
+        const cves = JSON.parse(event.data);
+        if (cves.error) {
+            handleCVSError(cves.error, source);
+            return;
+        }
+        cves.forEach(cve => {
+            addCVERow(cve);
+            sortedRows.push(cve);
+        });
+        // Re-apply sorting if necessary
+        if (currentSort.column) {
+            sortTable(currentSort.column, currentSort.direction);
+        }
+        loadingDiv.style.display = "none";
+    };
+    // Redirect when stream finishes
+    source.addEventListener("done", () => {
+        source.close();                   // Close SSE connection
+        window.location.href = "/display-stored";  // Redirect
+    });
     source.onerror = () => handleSSEError(source);
 }
+
 
 // ---------- HANDLE SSE MESSAGES ----------
 function handleCVEStream(event, source) {

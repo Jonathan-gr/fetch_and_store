@@ -49,15 +49,14 @@ def create_tables():
     conn.commit()
     conn.close()
 
-def save_cve(item):
-
-    values_dict = {}
-
-    # Extract values from API
-    values_dict['id'] = item["cve"]["id"]
-    values_dict['published'] = clean_datetime(item["cve"]["published"])
-    values_dict['last_modified'] = clean_datetime(item["cve"]["lastModified"])
-    values_dict['description'] = item["cve"]["descriptions"][0]["value"]
+def build_cve_values(item: dict) -> dict:
+    """Extract and prepare CVE values from API item."""
+    values_dict = {
+        'id': item["cve"]["id"],
+        'published': clean_datetime(item["cve"]["published"]),
+        'last_modified': clean_datetime(item["cve"]["lastModified"]),
+        'description': item["cve"]["descriptions"][0]["value"],
+    }
 
     # CVSS v3
     cvss_v3 = item["cve"]["metrics"].get("cvssMetricV31") or item["cve"]["metrics"].get("cvssMetricV30")
@@ -74,7 +73,13 @@ def save_cve(item):
     safe_refs = [ref["url"] for ref in refs if is_safe_url(ref["url"])]
     values_dict['reference_urls'] = ",".join(safe_refs)
 
-    # Save to database
+    return values_dict
+
+
+def save_cve(item: dict) -> dict:
+    """Save a single CVE item into database."""
+    values_dict = build_cve_values(item)
+
     conn = get_connection()
     cursor = conn.cursor()
     columns = ", ".join(COLUMN_DICT.keys())
@@ -84,7 +89,8 @@ def save_cve(item):
     conn.commit()
     conn.close()
 
-    return values_dict  # Return the processed CVE data for streaming
+    return values_dict  # return processed CVE data
+
 
 def clean_datetime(dt_str):
     # Parse full string, ignoring milliseconds if they exist

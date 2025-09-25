@@ -39,44 +39,46 @@ def home(request: Request):
     return templates.TemplateResponse("main.html", {"request": request})
 
 
-# Stream CVE data using Server-Sent Events
+#Fetch CVEs from the API
+async def fetch_cves_from_api():
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(f"{API_URL}?cpeName={CPE}", headers=headers)
+        try:
+            return response.json()
+        except Exception as e:
+            print("JSON parse error:", str(e))
+            return {}
+
+# Stream CVEs in batches
+async def stream_cve_batches(data, batch_size=20):
+    cve_batch = []
+
+    for item in data.get("vulnerabilities", []):
+        cve = DB.save_cve(item)  # save_cve returns dict
+        if cve:
+            cve_batch.append(cve)
+
+        if len(cve_batch) >= batch_size:
+            yield f"data: {json.dumps(cve_batch)}\n\n"
+            cve_batch = []
+            await asyncio.sleep(0.1)  # prevent overwhelming client
+
+    # Send any remaining CVEs
+    if cve_batch:
+        yield f"data: {json.dumps(cve_batch)}\n\n"
+
+    # Signal completion
+    yield f"event: done\ndata: {{}}\n\n"
+
+# Main route
 @app.get("/stream-cves")
 async def stream_cves():
     async def event_stream():
         try:
             DB.delete_all_from_table()
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(f"{API_URL}?cpeName={CPE}",headers=headers)
-
-                try:
-                    data = response.json()
-                except Exception as e:
-                    print("JSON parse error:", str(e))
-                    data = {}
-
-                cve_batch = []
-                batch_size = 20  # Send data in chunks of 20 CVEs
-
-                for item in data.get("vulnerabilities", []):
-
-                    cve = DB.save_cve(item)  # Assume save_cve returns the saved CVE as a dict
-                    if cve:
-                        cve_batch.append(cve)
-
-                    if len(cve_batch) >= batch_size:
-                        # Send batch as SSE event
-                        yield f"data: {json.dumps(cve_batch)}\n\n"
-                        cve_batch = []  # Reset batch
-                        await asyncio.sleep(0.1)  # Small delay to prevent overwhelming the
-
-
-                # Send any remaining CVEs
-                if cve_batch:
-                    yield f"data: {json.dumps(cve_batch)}\n\n"
-
-            # --- SIGNAL STREAM COMPLETE ---
-            yield f"event: done\ndata: {{}}\n\n"
-
+            data = await fetch_cves_from_api()
+            async for chunk in stream_cve_batches(data):
+                yield chunk
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 

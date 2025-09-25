@@ -46,7 +46,7 @@ async def stream_cves():
         try:
             DB.delete_all_from_table()
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(f"{API_URL}?cpeName={CPE}&resultsPerPage=150",headers=headers)
+                response = await client.get(f"{API_URL}?cpeName={CPE}",headers=headers)
 
                 try:
                     data = response.json()
